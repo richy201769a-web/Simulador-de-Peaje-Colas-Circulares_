@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Simulador de Peaje · Colas Circulares</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--tx:#1b1f27;--mu:#6a7282;--bd:#dde1e8;--ac:#2563eb;--ok:#16a34a;--wa:#d97706;--er:#dc2626;--sl:#eef1f6;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1218;--card:#181c25;--tx:#e8ebf1;--mu:#8e97a8;--bd:#2a303c;--ac:#60a5fa;--ok:#4ade80;--wa:#fbbf24;--er:#f87171;--sl:#222836;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1218;--card:#181c25;--tx:#e8ebf1;--mu:#8e97a8;--bd:#2a303c;--ac:#60a5fa;--ok:#4ade80;--wa:#fbbf24;--er:#f87171;--sl:#222836;color-scheme:dark}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:14px}
+h1{font-size:20px;margin:0 0 2px}p.s{margin:0 0 12px;color:var(--mu)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:12px;margin-bottom:12px}
+.ctl{display:flex;flex-wrap:wrap;gap:10px;align-items:end}
+label{display:flex;flex-direction:column;font-size:12px;color:var(--mu);gap:3px}
+input,select,button{font:inherit;padding:6px 9px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--tx)}
+input[type=number]{width:70px}input[type=range]{padding:0;width:120px}
+button{cursor:pointer;font-weight:600}button.p{background:var(--ac);color:#fff;border-color:var(--ac)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-bottom:12px}
+.st{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:8px 10px}.st b{display:block;font-size:20px}.st span{color:var(--mu);font-size:12px}
+#lanes{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}.lane{background:var(--sl);border:1px solid var(--bd);border-radius:12px;padding:8px;text-align:center}.lane.full{border-color:var(--er)}.li{font-size:12px;color:var(--mu)}.li b{color:var(--tx)}
+.ring{display:block;width:100%;max-width:240px;margin:0 auto}
+.slot{position:relative;min-width:74px;height:70px;border:2px dashed var(--bd);border-radius:10px;background:var(--sl);text-align:center;padding:3px;font-size:10px;line-height:1.15}
+.slot.f{border-style:solid;border-color:var(--ac)}.slot .e{font-size:24px;display:block}
+.slot .i{position:absolute;top:-15px;left:0;right:0;font-size:10px;font-weight:700;display:flex;justify-content:center;gap:4px}
+.hd{color:var(--ok)}.tl{color:var(--wa)}
+.bar{position:absolute;left:4px;right:4px;bottom:3px;height:4px;background:var(--bd);border-radius:2px}.bar i{display:block;height:100%;background:var(--ok);border-radius:2px}
+.wait{display:flex;flex-wrap:wrap;gap:6px;min-height:30px}.chip{background:var(--sl);border:1px solid var(--bd);border-radius:999px;padding:3px 9px;font-size:12px}
+.log{font:12px/1.5 ui-monospace,Menlo,monospace;max-height:170px;overflow:auto;color:var(--mu)}
+.log div b{color:var(--tx)}.tbl{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:12px}td,th{padding:4px 8px;border-bottom:1px solid var(--bd);text-align:left;white-space:nowrap}
+.err{color:var(--er);font-size:12px;min-height:16px}
+</style></head><body>
+<h1>🛣️ Simulador de peaje · colas circulares</h1>
+<p class="s">Cada carril es una cola circular de capacidad fija. Los vehículos pequeños tienen prioridad en la espera.</p>
+
+<div class="card"><div class="ctl">
+<label>Carriles (1-8)<input type="number" id="nL" value="3" min="1" max="8"></label>
+<label>Capacidad (1-10)<input type="number" id="cap" value="4" min="1" max="10"></label>
+<label>Llegadas/tick: <span id="rv">0.8</span><input type="range" id="rate" min="0" max="3" step="0.1" value="0.8"></label>
+<label>Velocidad: <span id="sv">600</span> ms<input type="range" id="spd" min="100" max="1500" step="50" value="600"></label>
+<button class="p" id="bp">▶ Iniciar</button><button id="bs">⏭ Paso</button><button id="br">↺ Aplicar y reiniciar</button>
+</div>
+<div class="ctl" style="margin-top:10px">
+<label>Llegada manual<select id="mt"></select></label><button id="ba">➕ Agregar vehículo</button>
+<span class="err" id="err"></span></div></div>
+
+<div class="stats" id="stats"></div>
+<div class="card" id="lanes"></div>
+<div class="card"><b>⏳ Sala de espera</b> <span style="color:var(--mu)">(orden: más pequeño primero; con el tiempo cualquier vehículo gana prioridad para evitar que nunca pase)</span><div class="wait" id="wait" style="margin-top:8px"></div></div>
+<div class="card"><b>📋 Registro</b><div class="log" id="log"></div></div>
+<div class="card"><b>💰 Tarifas y prioridad</b><div class="tbl"><table id="tar"></table></div></div>
+
+<script>
+// ---------- Tipos de vehículo: rank = tamaño (menor = más prioridad) ----------
+const TYPES=[
+{k:'Motocicleta',e:'🏍️',cost:120,svc:2,m:['Italika FT150','Honda CB190R','Yamaha FZ25']},
+{k:'Sedán',e:'🚗',cost:350,svc:3,m:['Nissan Versa','VW Vento','Toyota Yaris','Chevrolet Aveo']},
+{k:'SUV',e:'🚙',cost:500,svc:3,m:['Toyota RAV4','Mazda CX-5','Honda CR-V']},
+{k:'Pickup',e:'🛻',cost:600,svc:4,m:['Toyota Hilux','Ford Ranger','Nissan NP300']},
+{k:'Van',e:'🚐',cost:700,svc:4,m:['Ford Transit','Nissan Urvan','Toyota Hiace']},
+{k:'Autobús',e:'🚌',cost:900,svc:5,m:['Mercedes-Benz O500','Volvo 9700','Scania K360']},
+{k:'Camión',e:'🚚',cost:1200,svc:6,m:['Kenworth T370','Isuzu Forward','Hino 500']},
+{k:'Tractor',e:'🚜',cost:1400,svc:7,m:['John Deere 6120','Massey Ferguson 4707','New Holland T6']},
+{k:'Tráiler',e:'🚛',cost:2000,svc:8,m:['Freightliner Cascadia','Kenworth T680','Volvo VNL']}
+].map((t,i)=>({...t,rank:i}));
+const WEIGHTS=[8,30,20,14,7,5,7,3,6];     // frecuencia de llegada
+const AGING=12, MAXWAIT=40;               // anti-inanición y límite de sala de espera
+
+// ---------- Cola circular ----------
+class CircularQueue{
+ constructor(cap){ if(!Number.isInteger(cap)||cap<1) throw new Error('Capacidad inválida');
+  this.cap=cap;this.data=new Array(cap).fill(null);this.head=0;this.tail=0;this.count=0}
+ isFull(){return this.count===this.cap} isEmpty(){return this.count===0}
+ enqueue(x){ if(this.isFull()) return false; this.data[this.tail]=x; this.tail=(this.tail+1)%this.cap; this.count++; return true}
+ dequeue(){ if(this.isEmpty()) return null; const x=this.data[this.head]; this.data[this.head]=null; this.head=(this.head+1)%this.cap; this.count--; return x}
+ peek(){return this.isEmpty()?null:this.data[this.head]}
+}
+
+// ---------- Estado ----------
+let lanes,waiting,t,nextId,income,served,lost,waitSum,log,timer=null,perLane;
+const $=id=>document.getElementById(id);
+const clamp=(v,a,b,d)=>{v=parseInt(v,10);return isNaN(v)?d:Math.min(b,Math.max(a,v))};
+function say(m){log.unshift(`<div>t=${String(t).padStart(3,'0')} · ${m}</div>`);if(log.length>60)log.pop()}
+
+function reset(){
+ stop();
+ const n=clamp($('nL').value,1,8,3), c=clamp($('cap').value,1,10,4);
+ const msg=(n!=$('nL').value||c!=$('cap').value)?'Valores ajustados a los límites permitidos.':'';
+ $('nL').value=n;$('cap').value=c;$('err').textContent=msg;
+ lanes=Array.from({length:n},()=>new CircularQueue(c));
+ perLane=new Array(n).fill(0);
+ waiting=[];t=0;nextId=1;income=0;served=0;lost=0;waitSum=0;log=[];
+ say('Simulación lista.');render();
+}
+function newVehicle(type){
+ const ty=type||pick();
+ return {id:nextId++,ty,model:ty.m[Math.floor(Math.random()*ty.m.length)],arr:t,rem:null};
+}
+function pick(){let r=Math.random()*WEIGHTS.reduce((a,b)=>a+b),i=0;for(;i<WEIGHTS.length;i++){r-=WEIGHTS[i];if(r<0)break}return TYPES[Math.min(i,8)]}
+function arrive(v){
+ if(waiting.length>=MAXWAIT){lost++;say(`<b>✖ ${v.ty.k} ${v.model}</b> se retira: sala de espera saturada.`);return}
+ waiting.push(v);say(`Llega ${v.ty.e} <b>${v.model}</b> (${v.ty.k}, $${v.ty.cost}).`);
+}
+const eff=v=>v.ty.rank-Math.floor((t-v.arr)/AGING);   // prioridad efectiva
+function bestLane(){let b=-1;lanes.forEach((q,i)=>{if(!q.isFull()&&(b<0||q.count<lanes[b].count))b=i});return b}
+
+function tick(){
+ t++;
+ // 1) Servicio: el vehículo en cabeza de cada carril paga y sale
+ lanes.forEach((q,i)=>{const h=q.peek();if(!h)return;
+  if(h.rem===null)h.rem=h.ty.svc; h.rem--;
+  if(h.rem<=0){q.dequeue();income+=h.ty.cost;served++;perLane[i]++;say(`Sale ${h.ty.e} <b>${h.model}</b> del carril ${i+1} · cobra $${h.ty.cost}.`)}
+ });
+ // 2) Llegadas
+ const r=parseFloat($('rate').value)||0;let n=Math.floor(r)+(Math.random()<r%1?1:0);
+ for(let k=0;k<n;k++)arrive(newVehicle());
+ // 3) Asignar de la sala de espera (más pequeño/más antiguo primero) al carril con menos vehículos
+ waiting.sort((a,b)=>eff(a)-eff(b)||a.id-b.id);
+ while(waiting.length){const b=bestLane();if(b<0)break;
+  const v=waiting.shift();lanes[b].enqueue(v);waitSum+=t-v.arr;say(`${v.ty.e} ${v.model} → carril ${b+1}.`)}
+ render();
+}
+function manual(){const ty=TYPES[clamp($('mt').value,0,8,1)];arrive(newVehicle(ty));
+ waiting.sort((a,b)=>eff(a)-eff(b)||a.id-b.id);
+ while(waiting.length){const b=bestLane();if(b<0)break;const v=waiting.shift();lanes[b].enqueue(v);waitSum+=t-v.arr}render()}
+function stop(){if(timer){clearInterval(timer);timer=null}$('bp').textContent='▶ Iniciar'}
+function toggle(){if(timer){stop();return}$('bp').textContent='⏸ Pausar';timer=setInterval(tick,parseInt($('spd').value,10)||600)}
+
+// ---------- Render ----------
+function laneHtml(q,i){
+ const R=72,n=q.cap,r=n===1?22:Math.min(22,0.85*R*Math.sin(Math.PI/n));
+ let s='';
+ for(let j=0;j<n;j++){
+  const a=2*Math.PI*j/n-Math.PI/2,x=100+R*Math.cos(a),y=100+R*Math.sin(a),v=q.data[j];
+  const ix=100+(R-r-9)*Math.cos(a),iy=100+(R-r-9)*Math.sin(a),C=2*Math.PI*(r+3);
+  const pr=v&&v.rem!==null?(v.ty.svc-v.rem)/v.ty.svc:0;
+  s+=`<g><title>${v?v.ty.k+' '+v.model+' · $'+v.ty.cost:'Slot '+j+' libre'}</title><circle cx="${x}" cy="${y}" r="${r}" fill="${v?'var(--card)':'var(--sl)'}" stroke="${v?'var(--ac)':'var(--bd)'}" stroke-width="2" ${v?'':'stroke-dasharray="4 3"'}/>`;
+  if(pr>0)s+=`<circle cx="${x}" cy="${y}" r="${r+3}" fill="none" stroke="var(--ok)" stroke-width="3" stroke-dasharray="${C*pr} ${C}" transform="rotate(-90 ${x} ${y})"/>`;
+  s+=v?`<text x="${x}" y="${y}" font-size="${r*1.05}" text-anchor="middle" dominant-baseline="central">${v.ty.e}</text>`:`<text x="${x}" y="${y}" font-size="10" fill="var(--mu)" text-anchor="middle" dominant-baseline="central">${j}</text>`;
+  const lab=(j===q.head&&j===q.tail)?'H·T':j===q.head?'H':j===q.tail?'T':'';
+  if(lab)s+=`<text x="${ix}" y="${iy}" font-size="11" font-weight="700" fill="${j===q.head?'var(--ok)':'var(--wa)'}" text-anchor="middle" dominant-baseline="central">${lab}</text>`;
+  s+='</g>';
+ }
+ s+=`<text x="100" y="92" font-size="13" font-weight="700" fill="var(--tx)" text-anchor="middle">Carril ${i+1}</text><text x="100" y="112" font-size="15" fill="${q.isFull()?'var(--er)':'var(--mu)'}" text-anchor="middle">${q.count}/${q.cap}</text>`;
+ return `<div class="lane ${q.isFull()?'full':''}"><svg class="ring" viewBox="0 0 200 200">${s}</svg><div class="li">head=<b>${q.head}</b> · tail=<b>${q.tail}</b> · atendidos: <b>${perLane[i]}</b>${q.isFull()?' · <b style="color:var(--er)">LLENO</b>':''}</div></div>`;
+}
+function render(){
+ const inLanes=lanes.reduce((a,q)=>a+q.count,0);
+ const st=[['⏱️ Tick',t],['💰 Recaudado','$'+income.toLocaleString('es-MX')],['✅ Atendidos',served],['🚦 En carriles',inLanes],['⏳ En espera',waiting.length],['⚠️ Rechazados',lost],['⌛ Espera prom.',served+inLanes?(waitSum/Math.max(1,served+inLanes)).toFixed(1):'0.0']];
+ $('stats').innerHTML=st.map(s=>`<div class="st"><span>${s[0]}</span><b>${s[1]}</b></div>`).join('');
+ $('lanes').innerHTML=lanes.map(laneHtml).join('');
+ $('wait').innerHTML=waiting.length?waiting.map(v=>`<span class="chip">${v.ty.e} ${v.model} · $${v.ty.cost}</span>`).join(''):'<span style="color:var(--mu)">Sin vehículos esperando.</span>';
+ $('log').innerHTML=log.join('');
+}
+
+// ---------- Init ----------
+$('mt').innerHTML=TYPES.map((x,i)=>`<option value="${i}">${x.e} ${x.k}</option>`).join('');
+$('tar').innerHTML='<tr><th>Prioridad</th><th>Tipo</th><th>Modelos de ejemplo</th><th>Tarifa</th><th>Ticks de cobro</th></tr>'+TYPES.map(x=>`<tr><td>${x.rank+1}</td><td>${x.e} ${x.k}</td><td>${x.m.join(', ')}</td><td>$${x.cost} MXN</td><td>${x.svc}</td></tr>`).join('');
+$('bp').onclick=toggle;$('bs').onclick=()=>{stop();tick()};$('br').onclick=reset;$('ba').onclick=manual;
+$('rate').oninput=e=>$('rv').textContent=e.target.value;
+$('spd').oninput=e=>{$('sv').textContent=e.target.value;if(timer){stop();toggle()}};
+reset();
+</script></body></html>
